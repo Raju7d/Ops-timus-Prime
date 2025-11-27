@@ -1,0 +1,31 @@
+variables:
+  AIR_ID: "123456"
+  VM_IMAGE: "ubuntu-latest"
+  PACKAGE_NAME: 123456-globallib_func
+  PYTHONVERSION: 3.11
+  PROJECT_NAME: Generation_123456
+  DEPLOY_INFRA_TF_LAYER_FOLDER: Global_Library_Function/infra
+  CODE_LOCATION: Global_Library_Function/src
+  ARTIFACT_NAME: 123456-globallib_func
+  ARCHIVE_FILE_PATH_TO_EXTRACT: 123456-globallib_func*.zip
+
+  # Environment Variables
+  ENVIRONMENT_NAME_DEV: 123456-genai-Azure2-SBX
+  ENVIRONMENT_NAME_UAT: 123456-genai-Azure2-UAT
+  
+  
+  AZURE_ENV_DEV: "dev"
+  AZURE_ENV_UAT: "uat"
+
+  # Terraform Statefile
+  TF_STATE_RESOURCE_GROUP: "RG-123456-VAS-DEV"
+  TF_STATE_STORAGE_ACCOUNT: "tfstatefilestorage123456"
+  TF_STATE_CONTAINER: "ctio-proj123456sbxtfstate"
+
+  # Terraform State FILE
+  TF_STATE_KEY_DEV: "ACVP/123456/DEV/Global_Library_Function.tfstate"
+  TF_STATE_KEY_UAT: "ACVP/123456/UAT/Global_Library_Function.tfstate"
+
+  # input definition var files
+  ENV_DEF_VARS_DEV: "azure_dev.tfvars"
+  ENV_DEF_VARS_UAT: "azure_uat.tfvars"

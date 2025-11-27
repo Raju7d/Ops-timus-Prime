@@ -1,0 +1,578 @@
+resources:
+  pipelines:
+    - pipeline: project_CI_Pipeline_resource
+      source: ACVP VIDEO IQ STANDARD PIPELINES/221671_VideoIQ_Standard_Global_Library_Func_ci
+
+trigger: none
+
+parameters:
+  - name: Deploy_or_Destroy
+    displayName: Do you want to Deploy or Destroy.
+    type: string
+    default: Deploy
+    values:
+      - Deploy
+      - Destroy
+  - name: Environment_To_Deploy
+    displayName: Select Environment in which you want to Deploy.
+    type: string
+    default: Sandbox
+    values:
+      - Sandbox
+      - Dev
+      - Npd
+      - Uat
+      - Prod
+
+variables:
+  - template: common-variables.yml
+  - group: 'cio-cloud-azure-sbx-221671'
+  
+pool:
+  vmImage: '$(VM_IMAGE)'
+
+
+stages:
+  - ${{ if and(eq(parameters.Environment_To_Deploy, 'Sandbox'), eq(parameters.Deploy_or_Destroy, 'Deploy'))  }}:
+    #=============================TERRAFORM Sandbox PLAN STAG===================================================
+    - stage: TerraformPlanStage
+      displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+      
+      jobs:
+      - job: TerraformPlan
+        displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        
+        # Download the artifact from the CI pipeline
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+        
+        # Extract the downloaded artifact
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+
+        #Added Script to check Terraform installation success or not 
+        - script: |
+            echo "Terraform path: $(which terraform)"
+            terraform -version
+          displayName: 'Check Terraform Availability'
+
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              Get-ChildItem
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_DEV)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              terraform workspace select $(AZURE_ENV_DEV) 2>stderr.txt
+              if (0 -ne $LastExitCode) {
+                foreach ($str in $stderr ) {
+                  if ($str.contains("AADSTS7000215") ) {
+                      Write-Output "Authentication Issue."
+                      Write-Output $str 
+                      $authErrorselect = $true 
+                  }
+                }
+                Write-Output "Error on workspace select:"
+                foreach ($str in $stderr ) {
+                  Write-Output $str
+                }
+                Write-Output "Trying Workspace New"
+                terraform workspace new $(AZURE_ENV_DEV) 2>stderr.txt
+              }
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+        #Terraform Plan stage
+        - task: PowerShell@2
+          displayName: 'Terraform Plan'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform plan -input=false -out "tfplan.bin" -no-color -var-file="$(ENV_DEF_VARS_DEV)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+    # =============================TERRAFORM Sandbox APPLY STAGE=============================================
+    - stage: TerraformApplyStage
+      displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+      jobs:
+      - job: TerraformApply
+        displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        # environment: $(ENVIRONMENT_NAME)
+        
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+          
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_DEV)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              terraform workspace select $(AZURE_ENV_DEV) || terraform workspace new $(AZURE_ENV_DEV) 
+              terraform workspace list -no-color
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        - task: PowerShell@2
+          displayName: 'Terraform Apply'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform apply -auto-approve -lock=true -lock-timeout=5m -input=false -no-color -var-file="$(ENV_DEF_VARS_DEV)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+  
+   #=============================TERRAFORM UAT PLAN STAGE=============================================
+  - ${{ if and(eq(parameters.Environment_To_Deploy, 'Uat'), eq(parameters.Deploy_or_Destroy, 'Deploy'))  }}:
+    - stage: TerraformPlanStage
+      displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+      
+      jobs:
+      - job: TerraformPlan
+        displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        
+        # Download the artifact from the CI pipeline
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+        
+        # Extract the downloaded artifact
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              Get-ChildItem
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_UAT)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              terraform workspace select $(AZURE_ENV_UAT) 2>stderr.txt
+              if (0 -ne $LastExitCode) {
+                foreach ($str in $stderr ) {
+                  if ($str.contains("AADSTS7000215") ) {
+                      Write-Output "Authentication Issue."
+                      Write-Output $str 
+                      $authErrorselect = $true 
+                  }
+                }
+                Write-Output "Error on workspace select:"
+                foreach ($str in $stderr ) {
+                  Write-Output $str
+                }
+                Write-Output "Trying Workspace New"
+                terraform workspace new $(AZURE_ENV_UAT) 2>stderr.txt
+              }
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+        #Terraform Plan stage
+        - task: PowerShell@2
+          displayName: 'Terraform Plan'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform plan -input=false -out "tfplan.bin" -no-color -var-file="$(ENV_DEF_VARS_UAT)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+    # =============================TERRAFORM UAT APPLY STAGE=============================================
+    - stage: TerraformApplyStage
+      displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+      jobs:
+      - job: TerraformApply
+        displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        # environment: $(ENVIRONMENT_NAME)
+        
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+        
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_UAT)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              terraform workspace select $(AZURE_ENV_UAT) || terraform workspace new $(AZURE_ENV_UAT)
+              terraform workspace list -no-color
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        - task: PowerShell@2
+          displayName: 'Terraform Apply'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform apply -auto-approve -lock=true -lock-timeout=5m -input=false -no-color -var-file="$(ENV_DEF_VARS_UAT)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+
+  #=============================TERRAFORM Dev PLAN STAGE=============================================
+  - ${{ if and(eq(parameters.Environment_To_Deploy, 'Dev'), eq(parameters.Deploy_or_Destroy, 'Deploy'))  }}:
+    - stage: TerraformPlanStage
+      displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+      
+      jobs:
+      - job: TerraformPlan
+        displayName: Terraform Plan ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        
+        # Download the artifact from the CI pipeline
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+        
+        # Extract the downloaded artifact
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              Get-ChildItem
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_DEV)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Hello World"
+              terraform workspace select $(AZURE_ENV_DEV) 2>stderr.txt
+              if (0 -ne $LastExitCode) {
+                foreach ($str in $stderr ) {
+                  if ($str.contains("AADSTS7000215") ) {
+                      Write-Output "Authentication Issue."
+                      Write-Output $str 
+                      $authErrorselect = $true 
+                  }
+                }
+                Write-Output "Error on workspace select:"
+                foreach ($str in $stderr ) {
+                  Write-Output $str
+                }
+                Write-Output "Trying Workspace New"
+                terraform workspace new $(AZURE_ENV_DEV) 2>stderr.txt
+              }
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+        #Terraform Plan stage
+        - task: PowerShell@2
+          displayName: 'Terraform Plan'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform plan -input=false -out "tfplan.bin" -no-color -var-file="$(ENV_DEF_VARS_DEV)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+    
+    # =============================TERRAFORM Dev APPLY STAGE=============================================
+    - stage: TerraformApplyStage
+      displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+      jobs:
+      - job: TerraformApply
+        displayName: Terraform Apply ${{parameters.Environment_To_Deploy}}
+        workspace:
+          clean: all
+        # environment: $(ENVIRONMENT_NAME)
+        
+        steps:
+        - download: project_CI_Pipeline_resource
+          enabled: true
+
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+        
+        - task: TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        # terraform Init stage
+        - task: PowerShell@2
+          displayName: 'Terraform Init'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY_DEV)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        # Terraform Use workspace
+        - task: PowerShell@2
+          displayName: 'Terraform Use workspace'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              terraform workspace select $(AZURE_ENV_DEV) || terraform workspace new $(AZURE_ENV_DEV)
+              terraform workspace list -no-color
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+        
+        - task: PowerShell@2
+          displayName: 'Terraform Apply'
+          inputs:
+            targetType: 'inline'
+            script: |
+              # Write your PowerShell commands here.
+              Write-Host "Hello World"
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              terraform apply -auto-approve -lock=true -lock-timeout=5m -input=false -no-color -var-file="$(ENV_DEF_VARS_DEV)"
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'
+
+  
+  # =============================TERRAFORM DESTROY STAGE=============================================
+  - ${{ if and(eq(parameters.Environment_To_Deploy, 'Sandbox'), eq(parameters.Deploy_or_Destroy, 'Destroy'))  }}:
+    - stage: TerraformDestroy
+      displayName: Terraform Destroy ${{parameters.Environment_To_Deploy}}
+      jobs:
+      - job:
+        displayName: Terraform Destroy ${{parameters.Environment_To_Deploy}}
+        steps:
+        
+        - download: project_CI_Pipeline_resource
+          enabled: true
+
+         # Extract the downloaded artifact
+        - task: ExtractFiles@1
+          displayName: 'Extract Artifact'
+          inputs:
+            archiveFilePatterns: '$(Pipeline.Workspace)/project_CI_Pipeline_resource/$(ARTIFACT_NAME)/$(ARCHIVE_FILE_PATH_TO_EXTRACT)'
+            destinationFolder: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract'
+            cleanDestinationFolder: true
+          enabled: true
+       
+        - task: PowerShell@2
+          displayName: 'Terraform Destroy Plan and Apply'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "[Debug] Get Items in current location"
+              Get-ChildItem
+              # AZ Login
+              $azureCliLogin = az login --service-principal --username $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) -p="$(ARM_CLIENT_SECRET)" --allow-no-subscriptions | ConvertFrom-Json
+              if (!$azureCliLogin) {
+                Write-Host "[Debug] Error Detected!"
+                throw
+              }
+              Write-Host "[Debug] azureCliLogin is:"
+              Write-Host $($azureCliLogin)
+              az account set --subscription $(ARM_SUBSCRIPTION_ID)
+              Write-Host -f Green "Authenticated Successfully"
+              Write-Host -f Green "Logged in to Azure Cli $azureCliLogin"
+              
+              terraform init -no-color -backend-config="subscription_id=$(ARM_SUBSCRIPTION_ID)" -backend-config="resource_group_name=$(TF_STATE_RESOURCE_GROUP)" -backend-config="storage_account_name=$(TF_STATE_STORAGE_ACCOUNT)" -backend-config="key=$(TF_STATE_KEY)" -backend-config="container_name=$(TF_STATE_CONTAINER)"
+              terraform workspace select $(AZURE_ENV_DEV) || terraform workspace new $(AZURE_ENV_DEV)
+              terraform workspace list -no-color
+              terraform plan -destroy -out "tfplan.bin" -no-color -var-file="$(ENV_DEF_VARS_DEV)"
+              terraform apply -auto-approve ./tfplan.bin -no-color
+            workingDirectory: '$(Pipeline.Workspace)/build-bundle-$(ARTIFACT_NAME)-extract/$(DEPLOY_INFRA_TF_LAYER_FOLDER)'

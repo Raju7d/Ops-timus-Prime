@@ -1,0 +1,12 @@
+trigger: none
+
+variables:
+  - template: common-variables.yml
+
+stages:
+  - template: python-publish-job.yml
+    parameters:
+      packageName: $(PACKAGE_NAME)
+      deployInfraFolder: $(DEPLOY_INFRA_TF_LAYER_FOLDER)
+      pythonVersion: $(PYTHONVERSION)
+      code_location: $(CODE_LOCATION)

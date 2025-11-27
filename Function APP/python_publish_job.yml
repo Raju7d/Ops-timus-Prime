@@ -1,0 +1,57 @@
+parameters:
+- name: vmImage
+  default: 'ubuntu-latest'
+- name: packageName
+  default: 'azureFunction'
+- name: pythonVersion
+  default: '3.11'
+- name: deployInfraFolder
+  default: 'infra/eventgrid_generation_infra'  
+- name: code_location
+  default: 'EVENT_GRID_TRIGGER_221671/src'  
+
+stages: 
+  - stage: 'build_publish_azurefunction'
+    displayName: 'Build and Publish Azure Function'
+    pool:
+      vmImage: ${{ parameters.vmImage }}
+    jobs:
+    - job: build_publish_artifact
+      displayName: build_publish_artifact
+      pool:
+        vmImage: ${{ parameters.vmImage }}
+          
+      steps:
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: ${{ parameters.pythonVersion }}
+          addToPath: true
+          architecture: 'x64'
+
+      - script: |
+          pip install --user --upgrade pip setuptools
+          pip install --target="$(Build.SourcesDirectory)/${{ parameters.code_location }}/.python_packages/lib/site-packages" -r $(Build.SourcesDirectory)/$(CODE_LOCATION)/requirements.txt
+
+      - task: ArchiveFiles@2
+        displayName: "Zip the build package"
+        inputs:
+          rootFolderOrFile: "$(Build.SourcesDirectory)/${{ parameters.code_location }}"
+          includeRootFolder: false
+          archiveFile: "$(Build.ArtifactStagingDirectory)/${{ parameters.packageName }}.zip"
+
+      - task: CopyFiles@2
+        displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.ArtifactStagingDirectory)'
+          Contents: '*.zip'
+          TargetFolder: '$(Build.SourcesDirectory)/${{ parameters.deployInfraFolder }}'
+
+      - task: ArchiveFiles@2
+        displayName: 'Zip the publish package'
+        inputs:
+          rootFolderOrFile: '$(Build.SourcesDirectory)/Global_Library_Function'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/${{ parameters.packageName }}.zip'
+
+      - publish: $(Build.ArtifactStagingDirectory)/${{ parameters.packageName }}.zip
+        artifact: ${{ parameters.packageName }} 
+        enabled: true
