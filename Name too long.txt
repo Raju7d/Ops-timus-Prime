@@ -1,0 +1,49 @@
+2025-03-22T10:12:44.0123456Z ##[section]Starting: Terraform Init
+2025-03-22T10:12:44.1256789Z [command]/usr/bin/terraform init -input=false
+2025-03-22T10:12:45.0109832Z 
+2025-03-22T10:12:45.0110422Z Initializing modules...
+2025-03-22T10:12:45.8922441Z 
+2025-03-22T10:12:45.8923122Z Initializing the backend...
+2025-03-22T10:12:46.2281999Z Successfully configured the backend "azurerm"! Terraform will automatically
+2025-03-22T10:12:46.2283117Z use this backend unless the backend configuration changes.
+2025-03-22T10:12:46.2283551Z 
+2025-03-22T10:12:46.9902334Z Initializing provider plugins...
+2025-03-22T10:12:47.0039212Z - Finding latest version of hashicorp/azurerm...
+2025-03-22T10:12:48.4489992Z 
+2025-03-22T10:12:48.4491112Z Error: Invalid resource name
+2025-03-22T10:12:48.4491601Z 
+2025-03-22T10:12:48.4491981Z   on modules/function_app/main.tf line 14, in resource "azurerm_windows_function_app" "fn_app":
+2025-03-22T10:12:48.4492408Z   14:   name = "very-very-long-function-app-name-exceeding-azure-limit-123456789"
+2025-03-22T10:12:48.4492727Z 
+2025-03-22T10:12:48.4493098Z Function App name must be between 1 and 24 characters.
+2025-03-22T10:12:48.4493377Z 
+2025-03-22T10:12:48.4528892Z 
+2025-03-22T10:12:48.4529983Z ##[warning]Terraform init failed but continuing to next step
+2025-03-22T10:12:48.4530456Z ##[section]Starting: Terraform Validate
+2025-03-22T10:12:48.5091234Z [command]/usr/bin/terraform validate
+2025-03-22T10:12:49.2205421Z 
+2025-03-22T10:12:49.2210011Z Error: Unsupported argument
+2025-03-22T10:12:49.2212001Z 
+2025-03-22T10:12:49.2213614Z   on main.tf line 79:
+2025-03-22T10:12:49.2214930Z   79:   locationn = var.location
+2025-03-22T10:12:49.2216409Z 
+2025-03-22T10:12:49.2217700Z An argument named "locationn" is not expected here.
+2025-03-22T10:12:49.2218927Z 
+2025-03-22T10:12:49.2323321Z 
+2025-03-22T10:12:49.2324213Z ##[section]Starting: Terraform Plan
+2025-03-22T10:12:49.3528952Z [command]/usr/bin/terraform plan -input=false
+2025-03-22T10:12:50.1128378Z 
+2025-03-22T10:12:50.1129227Z Error: storage account name must be lowercase
+2025-03-22T10:12:50.1129773Z 
+2025-03-22T10:12:50.1130334Z   on storage.tf line 8, in resource "azurerm_storage_account" "sa":
+2025-03-22T10:12:50.1130851Z    8:   name = "MyStorageACCOUNT2025"
+2025-03-22T10:12:50.1131466Z 
+2025-03-22T10:12:50.1132067Z 
+2025-03-22T10:12:50.9859999Z ##[section]Starting: Azure CLI Deploy
+2025-03-22T10:12:51.7844392Z ERROR: (ResourceNotFound) Resource group 'ml-rg-dev###' is invalid
+2025-03-22T10:12:51.7845661Z Code: ResourceNotFound
+2025-03-22T10:12:51.7846182Z Message: The Resource Group name is invalid. Must match regex: ^[-\w\._\(\)]+$
+2025-03-22T10:12:52.1199983Z ERROR: Deployment failed.
+2025-03-22T10:12:52.1200421Z ##[error]Script failed with exit code: 1
+2025-03-22T10:12:52.2332512Z 
+2025-03-22T10:12:52.2333554Z ##[section]Finishing: Azure CLI Deploy

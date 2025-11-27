@@ -1,0 +1,26 @@
+2025-03-22T10:33:17.0042321Z ##[section]Starting: Build and Package Azure Functions
+2025-03-22T10:33:17.4412328Z Creating container...
+2025-03-22T10:33:18.3498123Z Running pip install -r requirements.txt
+2025-03-22T10:33:19.8894221Z ERROR: Could not find a version that satisfies the requirement azure-functions==9.0.0
+2025-03-22T10:33:19.8895622Z ERROR: No matching distribution found for azure-functions==9.0.0
+
+2025-03-22T10:33:20.2219921Z ##[warning]Dependency installation failed.
+
+2025-03-22T10:33:20.2223321Z Running linting...
+2025-03-22T10:33:20.3023321Z ./app/function_app/main.py:22:1: E999 IndentationError: unexpected indent
+2025-03-22T10:33:20.3024102Z ./app/function_app/helper.py:10:5: F821 undefined name 'storag_client'
+
+2025-03-22T10:33:21.0103321Z ##[section]Starting: YAML Validation
+2025-03-22T10:33:21.1200032Z ##[error]Unexpected value 'taskss' at line 51
+2025-03-22T10:33:21.1201292Z ##[error]Mapping values are not allowed here at line 74, column 13
+
+2025-03-22T10:33:22.8803221Z ##[section]Starting: Terraform Plan
+2025-03-22T10:33:23.1183921Z Error: Invalid index
+2025-03-22T10:33:23.1185122Z    on network.tf line 45, in module "subnets":
+2025-03-22T10:33:23.1186121Z    45: cidr_block = var.subnets[count.index]
+2025-03-22T10:33:23.1187021Z The given key does not identify an element in this collection.
+
+2025-03-22T10:33:24.1188122Z Error: Cycle detected
+2025-03-22T10:33:24.1188841Z   module.vnet outputs depend on module.subnet, which depends on module.vnet
+
+2025-03-22T10:33:25.2198221Z ##[error]Pipeline failed. Check the logs for more details.
