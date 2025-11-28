@@ -1,8 +1,9 @@
 terraform {
+  required_version = ">= 1.6.0"
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "3.103.1"
+      version = "3.95.0" 
     }
   }
   backend "azurerm" {}
@@ -14,7 +15,7 @@ provider "azurerm" {
 
 resource "azurerm_storage_account" "stg_acc" {
   name                     = var.storage_account_name
-  resource_group_name      = var.resource_group_name
+  resource_group_name      = var.resource_group # Typo Error
   location                 = var.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
@@ -30,7 +31,7 @@ resource "azurerm_service_plan" "src_plan" {
   resource_group_name = var.resource_group_name
   location            = var.location
   os_type             = "Linux"
-  sku_name            = "Y1"
+  sku_name            = "Y1" # # ❌ ERROR: Invalid SKU. Y2 does not exist for Linux consumption plan.
   tags = {
     Environment = var.environment
     Application = var.application
@@ -56,7 +57,7 @@ resource "azurerm_application_insights" "app_insights" {
   location            = var.location
   resource_group_name = var.resource_group_name
   workspace_id        = azurerm_log_analytics_workspace.log_analytics.id
-  application_type    = "web"
+  application_type    = "web-app" # ❌ ERROR: Wrong value. Should be "web"
   tags = {
     Environment = var.environment
     Application = var.application
@@ -71,7 +72,7 @@ resource "azurerm_linux_function_app" "evgrid_func" {
   storage_account_name        = azurerm_storage_account.stg_acc.name
   storage_account_access_key  = azurerm_storage_account.stg_acc.primary_access_key
   service_plan_id             = azurerm_service_plan.src_plan.id
-  functions_extension_version = "~4"
+  functions_extension_version = "~5"  # ❌ ERROR: Unsupported version; "~4" is required for Linux Python
   https_only                  = true
   zip_deploy_file             = var.zip_file
   app_settings = merge(var.function_app_application_settings, {
@@ -82,7 +83,7 @@ resource "azurerm_linux_function_app" "evgrid_func" {
     WEBSITE_RUN_FROM_PACKAGE               = "1"
   })
   site_config {
-    always_on                              = true
+    always_on                              = "true"  # ❌ ERROR: Should be boolean, not string
     application_insights_connection_string = azurerm_application_insights.app_insights.connection_string
     application_insights_key               = azurerm_application_insights.app_insights.instrumentation_key
     minimum_tls_version                    = 1.2
